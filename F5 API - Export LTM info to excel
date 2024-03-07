@@ -1,0 +1,110 @@
+import tqdm
+import time
+import openpyxl
+import requests
+from datetime import datetime
+import urllib3
+
+
+def nl():
+    print("\n")
+
+# Disable SSL Verification Log
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Time Variables
+start_time = time.time()
+date_time = datetime.fromtimestamp(start_time)
+str_date_time = date_time.strftime("%d-%m-%Y - %H.%M.%S")
+
+# F5 devices list
+F5_Appliance = ["1.1.1.1", "1.1.1.2", "1.1.1.3"]
+
+# Path for export
+path = "./VS_Summary"
+
+# Set the API credentials
+username = input("Enter Username: ")
+password = input("Enter Password: ")
+nl()
+
+for device in F5_Appliance:
+    MGMT_IP = device
+
+    # Excel File
+    EXCEL = f"{path} - {MGMT_IP} - {str_date_time}.xlsx"
+
+    print("================ START ================\n")
+    print(" [+] Current timestamp:", str_date_time)
+    print("     Connecting to: " + device)
+
+    # Set the base URL for the F5 BIG-IP API
+    base_url = f"https://{MGMT_IP}/mgmt/tm"
+
+    # Set the headers for the API request
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    # Set the API endpoint for retrieving a list of virtual servers
+    endpoint = f"{base_url}/ltm/virtual"
+
+    # Send the API request to retrieve the list of virtual servers
+    print("     => Extracting VS Information")
+    response = requests.get(endpoint, auth=(username, password), headers=headers, verify=False)
+
+    # Check the status code of the response
+    if response.status_code == 200:
+        # If the request is successful, retrieve the list of virtual servers
+        virtual_servers = response.json()["items"]
+
+        # Create a new Excel workbook
+        wb = openpyxl.Workbook()
+
+        # Create a new sheet in the workbook
+        sheet = wb.active
+
+        # Write the header row to the sheet
+        sheet.append(["Name", "Destination", "Description", "Source", "iRule", "Pool", "VLANs", "Created Time", "Modified Time", "Enabled"])
+        print("     => Extracting VS Information - Completed")
+        print("\n [+] Writing Information To Excel File \n")
+
+
+        # Iterate through the list of virtual servers
+        for i, virtual_server in enumerate(virtual_servers):
+            # Retrieve the name, destination, description, source, iRule, pool, VLANs, creation time, and modification time of the virtual server
+            name = virtual_server.get("name", "")
+            destination = virtual_server.get("destination", "")
+            description = virtual_server.get("description", "")
+            source = virtual_server.get("source", "")
+            irule = str(virtual_server.get("rules", ""))
+            pool = virtual_server.get("pool", "")
+            vlans = str(virtual_server.get("vlans", ""))
+            created_time = virtual_server.get("creationTime", 0)
+            modified_time = virtual_server.get("lastModifiedTime", 0)
+            enabled = virtual_server.get("enabled", "")
+            enabled = str(enabled)
+            disabled = virtual_server.get("disabled", "")
+
+            if str(enabled) == "True":
+                str(enabled).replace(enabled, "+")
+            else:
+                str(enabled).replace(enabled, "-")
+
+            # Write the virtual server information to the sheet
+            sheet.append([name, destination, description, source, irule, pool, vlans, created_time, modified_time, enabled])
+
+        # Save the workbook to the specified file
+        wb.save(EXCEL)
+
+    # print(f"\n [+] Virtual Server Information Extraction from {device} Completed\n")
+
+
+print("\n" + "#" * 40)
+print("        Finished Executing Script:")
+print("               %d Seconds               " % (time.time() - start_time))
+print("#" * 40 + "\n")
+print("Task Finished.")
+
+
