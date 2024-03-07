@@ -1,0 +1,106 @@
+from netmiko import ConnectHandler
+from netmiko.ssh_exception import NetMikoTimeoutException
+from netmiko.ssh_exception import AuthenticationException
+import time
+import textfsm
+
+def nl():
+    print(" ")
+
+
+start_time = time.time()
+end_time = time.time()
+
+user = input("Enter Username: ")
+password = input("Enter Password: ")
+
+with open("./ip_list.txt", "r") as IP:
+    # READ SWITCHES IP ADDRESS FROM TEXT FILE
+    ip_list = IP.read().splitlines()
+
+with open("./commands_list.txt", "r") as commands:
+    # EXECUTE CLI COMMANDS FROM TEXT FILE TO THE DEVICE
+    cmd_list = commands.read().splitlines()
+
+for line in ip_list:
+    Devices = {
+        "device_type": "cisco_ios",
+        "ip": line,
+        "username": user,
+        "password": password,
+        "fast_cli": True,
+        "session_log": "log.txt"
+    }
+
+    try:
+        # TRY TO SSH TO THE DEVICE AND EXECUTE COMMANDS
+        nl()
+        Connect = ConnectHandler(**Devices)
+        name = Connect.find_prompt().strip("#")
+        print(time.strftime("%H:%M:%S") + " ==> Trying To Connect...")
+        print(" " * 9 + "[+] Connection Established: " + name)
+        print(" " * 9 + "[+] Device Configuration started. ")
+        output = Connect.send_command("show cdp neighbors detail", use_textfsm=True)
+        # print(output)
+
+        for data in output:
+            remote_device = data["destination_host"]
+            remote_port = data["remote_port"]
+            local_port = data["local_port"]
+            # print(remote_device)
+            # print(remote_port)
+            # print(local_port)
+            config = (f"interface {local_port}", f"description **Connected to {remote_device}'s port {remote_port}**")
+            set_config = Connect.send_config_set(config)
+            # config_int = Connect.send_command(f"interface {local_port}")
+            # config_des = Connect.send_command(f"description **Connected to {remote_device} port {remote_port}**")
+
+        show_int_des = Connect.send_command("show interface description")
+        print(show_int_des + "\n")
+        Connect.disconnect()
+
+        print(" " * 9 + "[+] Done. ")
+
+        # with open("./Config Logs/{}_Logs.txt".format(name), "w") as f:
+        #     # WRITE THE OUTPUTS TO NEW TEXT FILE CALLED "HOSTNAME_LOG"
+        #     for command in output:
+        #         f.write(command)
+
+    except NetMikoTimeoutException:
+        print(time.strftime("%H:%M:%S") + " ==> Connection Failed With - " + line)
+        print(" " * 9 + "[-] Reason: Timeout Failure. ")
+        print(" " * 9 + "[-] IP Address Logged To Timeout File. ")
+
+        with open("./Notes/Timeout_failure.txt", "a") as failed_devices:
+            failed_devices.write(line + "  -  " + time.strftime("%H:%M:%S") + "\n")
+            nl()
+        continue
+
+    except AuthenticationException:
+        print(time.strftime("%H:%M:%S") + " ==> Failed To Access Device - " + line)
+        print(" " * 9 + "[-] Reason: Timeout Failure. ")
+        print(" " * 9 + "[-] IP Address Logged To Timeout File. ")
+
+        with open("./Notes/Authentication_failure.txt", "a") as failed_devices:
+            failed_devices.write(line + "  -  " + time.strftime("%H:%M:%S") + "\n")
+        nl()
+        continue
+
+    except ValueError:
+        print("        [-]  UNKNOWN ERROR. ")
+        continue
+
+    except EOFError:
+        print(time.strftime("%H:%M:%S") + " ==> Failed To Access Device - " + line)
+        print(" " * 9 + "[-] Channel stream closed by remote device.")
+        print(" " * 9 + "[-] IP Address Logged To Connection refused. ")
+
+        with open("./Notes/Connection refused.txt", "a") as failed_devices:
+            failed_devices.write(line + "  -  " + time.strftime("%H:%M:%S") + "\n")
+        nl()
+        continue
+
+print("\n" + "#" * 40)
+print("        Finished Executing Script:")
+print("               %d Seconds               " % (time.time() - start_time))
+print("#" * 40 + "\n")
