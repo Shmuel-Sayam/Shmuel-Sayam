@@ -1,0 +1,86 @@
+import time
+from netmiko import ConnectHandler
+from netmiko import NetMikoTimeoutException
+from netmiko import NetmikoAuthenticationException
+
+def nl():
+    print(" ")
+
+start_time = time.time()
+end_time = time.time()
+
+user = input("Username: ")
+password = input("Password: ")
+ip_for_blocking = input("Enter IP address to block: ")
+nl()
+
+mgmt_server = "10.0.0.100"
+FW_A = "10.0.0.101"
+FW_B = "10.0.0.102"
+FW_C = "10.0.0.103"
+
+FW_Cluster = [FW_A, FW_B, FW_C]
+print("Firewall cluster IP: " + str(FW_Cluster))
+
+
+
+# if ip_for_blocking:
+for fw_member in FW_Cluster:
+    try:
+        MGMT_Device = {
+            "device_type": "checkpoint_gaia",
+            "ip": fw_member,
+            "username": user,
+            "password": password,
+            "session_log": "session_log.txt",
+        }
+        # TRY TO SSH TO THE DEVICE AND EXECUTE COMMANDS
+        Connect = ConnectHandler(**MGMT_Device)
+        name = Connect.find_prompt().strip(">@")
+        print(time.strftime("%H:%M:%S") + " ==> Trying To Connect...")
+        print(" " * 9 + "[+] Connection Established: " + name)
+
+        if "Expert@" in name:
+            Enter_Clish = Connect.send_config_set("clish")
+
+        Search_IP = Connect.send_config_set("fw dos blacklist -d")
+        print(" " * 9 + "[+] Current blocked IP list: ")
+        print(Search_IP)
+        block_IP = Connect.send_config_set(f"fwaccel dos blacklist -a {ip_for_blocking}")
+        verify_IP = Connect.send_config_set(f"fwaccel dos blacklist -d | {ip_for_blocking}")
+        print(" " * 9 + "[+] Blocked IP: " + verify_IP)
+        print(" " * 9 + "[+] Done. ")
+        Connect.disconnect()
+
+    except NetMikoTimeoutException:
+        print(time.strftime("%H:%M:%S") + " ==> Connection Failed With - " + fw_member)
+        print(" " * 9 + "[-] Reason: Timeout Failure. ")
+        print(" " * 9 + "[-] IP Address Logged To Timeout File. ")
+        with open("./Notes/Timeout_failure.txt", "a") as failed_devices:
+            failed_devices.write(fw_member + "  -  " + time.strftime("%H:%M:%S") + "\n")
+            nl()
+        continue
+
+    except NetmikoAuthenticationException:
+        print(time.strftime("%H:%M:%S") + " ==> Failed To Access Device - " + fw_member)
+        print(" " * 9 + "[-] Reason: Timeout Failure. ")
+        print(" " * 9 + "[-] IP Address Logged To Timeout File. ")
+
+        with open("./Notes/Authentication_failure.txt", "a") as failed_devices:
+            failed_devices.write(fw_member + "  -  " + time.strftime("%H:%M:%S") + "\n")
+        nl()
+        continue
+
+    except ValueError:
+        print("        [-]  UNKNOWN ERROR. ")
+        continue
+
+    except EOFError:
+        print(time.strftime("%H:%M:%S") + " ==> Failed To Access Device - " + fw_member)
+        print(" " * 9 + "[-] Channel stream closed by remote device.")
+        print(" " * 9 + "[-] IP Address Logged To Connection refused. ")
+
+        with open("./Notes/Connection refused.txt", "a") as failed_devices:
+            failed_devices.write(fw_member + "  -  " + time.strftime("%H:%M:%S") + "\n")
+        nl()
+        continue
