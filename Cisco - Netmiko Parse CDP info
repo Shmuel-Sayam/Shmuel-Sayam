@@ -20,8 +20,8 @@ for ip in IP_ADDR:
     devices = {
         "device_type": "cisco_ios",
         "ip": ip,
-        "username": "shmuelsa",
-        "password": "Ss313992@",
+        "username": username,
+        "password": password,
         "fast_cli": True
     }
 
